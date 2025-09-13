@@ -28,9 +28,12 @@ app.post('/api/authorize-token', async (req, res) => {
     const retUrl   = process.env.RETURN_URL || 'https://innovahealthwellness.com/authorize-chrono/return.html';
     const cancelUrl= process.env.CANCEL_URL || 'https://innovahealthwellness.com/authorize-chrono/cancel.html';
 
-    const apiUrl = mode === 'production'
-      ? 'https://api.authorize.net/json/v1/request.api'
-      : 'https://apitest.authorize.net/json/v1/request.api';
+   - const apiUrl = mode === 'production'
+-   ? 'https://api.authorize.net/json/v1/request.api'
+-   : 'https://apitest.authorize.net/json/v1/request.api';
++ const apiUrl = mode === 'production'
++   ? 'https://api2.authorize.net/xml/v1/request.api'   // production
++   : 'https://apitest.authorize.net/xml/v1/request.api';// sandbox
 
     const payload = {
       getHostedPaymentPageRequest: {
