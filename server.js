@@ -5,9 +5,9 @@ const cors = require('cors');
 const app = express();
 app.use(express.json());
 
-// Allow only your site that hosts the DrChrono page
+// Only allow your site to call this API
 app.use(cors({
-  origin: ['https://yourdomain.com'], // change to your domain
+  origin: ['https://innovahealthwellness.com'],
   methods: ['POST'],
   allowedHeaders: ['Content-Type']
 }));
@@ -22,11 +22,11 @@ app.post('/api/authorize-token', async (req, res) => {
     }
 
     const apiLogin = process.env.AUTHNET_API_LOGIN_ID;
-    const txnKey  = process.env.AUTHNET_TRANSACTION_KEY;
-    const mode    = process.env.AUTHNET_ENV || 'sandbox'; // sandbox or production
-    const commUrl = process.env.COMMUNICATOR_URL; // https://yourdomain.com/iframe-communicator.html
-    const retUrl  = process.env.RETURN_URL || 'https://yourdomain.com/return';
-    const cancelUrl = process.env.CANCEL_URL || 'https://yourdomain.com/cancel';
+    const txnKey   = process.env.AUTHNET_TRANSACTION_KEY;
+    const mode     = process.env.AUTHNET_ENV || 'sandbox';
+    const commUrl  = process.env.COMMUNICATOR_URL;
+    const retUrl   = process.env.RETURN_URL || 'https://innovahealthwellness.com/authorize-chrono/return.html';
+    const cancelUrl= process.env.CANCEL_URL || 'https://innovahealthwellness.com/authorize-chrono/cancel.html';
 
     const apiUrl = mode === 'production'
       ? 'https://api.authorize.net/json/v1/request.api'
@@ -43,26 +43,16 @@ app.post('/api/authorize-token', async (req, res) => {
         },
         hostedPaymentSettings: {
           setting: [
-            {
-              settingName: 'hostedPaymentIFrameCommunicatorUrl',
-              settingValue: JSON.stringify({ url: commUrl })
-            },
-            {
-              settingName: 'hostedPaymentReturnOptions',
-              settingValue: JSON.stringify({
-                showReceipt: false, url: retUrl, urlText: 'Continue',
-                cancelUrl, cancelUrlText: 'Cancel'
-              })
-            }
+            { settingName: 'hostedPaymentIFrameCommunicatorUrl',
+              settingValue: JSON.stringify({ url: commUrl }) },
+            { settingName: 'hostedPaymentReturnOptions',
+              settingValue: JSON.stringify({ showReceipt:false, url: retUrl, urlText: 'Continue', cancelUrl, cancelUrlText: 'Cancel' }) }
           ]
         }
       }
     };
 
-    const { data } = await axios.post(apiUrl, payload, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-
+    const { data } = await axios.post(apiUrl, payload, { headers: { 'Content-Type': 'application/json' } });
     const token = data?.token || data?.getHostedPaymentPageResponse?.token;
     if (!token) return res.status(502).json({ error: 'No token in Authorize.net response', raw: data });
 
