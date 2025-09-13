@@ -5,7 +5,7 @@ const cors = require('cors');
 const app = express();
 app.use(express.json());
 
-// Only allow your site to call this API
+// Only allow your site that hosts the DrChrono page
 app.use(cors({
   origin: ['https://innovahealthwellness.com'],
   methods: ['POST'],
@@ -28,43 +28,48 @@ app.post('/api/authorize-token', async (req, res) => {
     const retUrl   = process.env.RETURN_URL || 'https://innovahealthwellness.com/authorize-chrono/return.html';
     const cancelUrl= process.env.CANCEL_URL || 'https://innovahealthwellness.com/authorize-chrono/cancel.html';
 
-   - const apiUrl = mode === 'production'
--   ? 'https://api.authorize.net/json/v1/request.api'
--   : 'https://apitest.authorize.net/json/v1/request.api';
-+ const apiUrl = mode === 'production'
-+   ? 'https://api2.authorize.net/xml/v1/request.api'   // production
-+   : 'https://apitest.authorize.net/xml/v1/request.api';// sandbox
+    // Correct endpoints (XML path, JSON body is fine)
+    const apiUrl = mode === 'production'
+      ? 'https://api2.authorize.net/xml/v1/request.api'
+      : 'https://apitest.authorize.net/xml/v1/request.api';
 
     const payload = {
       getHostedPaymentPageRequest: {
         merchantAuthentication: { name: apiLogin, transactionKey: txnKey },
         transactionRequest: {
           transactionType: 'authCaptureTransaction',
-          amount: String(amount),
-          customer: customerId ? { id: String(customerId) } : undefined,
-          order: { invoiceNumber: String(invoiceNumber), description: description || 'Payment' }
+          amount: String(Number(amount).toFixed(2)),
+          ...(customerId ? { customer: { id: String(customerId) } } : {}),
+          order: {
+            invoiceNumber: String(invoiceNumber).slice(0, 20),
+            description: (description || 'Payment').slice(0, 255)
+          }
         },
         hostedPaymentSettings: {
           setting: [
-            { settingName: 'hostedPaymentIFrameCommunicatorUrl',
-              settingValue: JSON.stringify({ url: commUrl }) },
-            { settingName: 'hostedPaymentReturnOptions',
-              settingValue: JSON.stringify({ showReceipt:false, url: retUrl, urlText: 'Continue', cancelUrl, cancelUrlText: 'Cancel' }) }
+            {
+              settingName: 'hostedPaymentIFrameCommunicatorUrl',
+              settingValue: JSON.stringify({ url: commUrl })
+            },
+            {
+              settingName: 'hostedPaymentReturnOptions',
+              settingValue: JSON.stringify({
+                showReceipt: false,
+                url: retUrl,
+                urlText: 'Continue',
+                cancelUrl,
+                cancelUrlText: 'Cancel'
+              })
+            }
           ]
         }
       }
     };
 
-    const { data } = await axios.post(apiUrl, payload, { headers: { 'Content-Type': 'application/json' } });
-    const token = data?.token || data?.getHostedPaymentPageResponse?.token;
-    if (!token) return res.status(502).json({ error: 'No token in Authorize.net response', raw: data });
+    const { data } = await axios.post(apiUrl, payload, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 15000
+    });
 
-    res.json({ token });
-  } catch (err) {
-    console.error('authorize-token error', err?.response?.data || err.message);
-    res.status(500).json({ error: 'Unable to generate token' });
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('Listening on ' + PORT));
+    const diag = {
+      resultCode: data?.messages?.r
