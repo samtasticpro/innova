@@ -1,0 +1,162 @@
+<!doctype html>
+<!--
+  This page demonstrates how to embed an Authorize.net Accept Hosted payment
+  form inside DrChrono using their iframe integration.  It is intended to
+  be hosted on your own domain and registered as a patient page iframe via
+  DrChrono's `/api/iframe_integration` endpoint.  When DrChrono loads this
+  page, it automatically appends query parameters such as doctor_id and
+  patient_id, signed with a JWT.  You can use these parameters to prefill
+  the payment request (e.g. link the DrChrono patient to your Authorize.net
+  transaction).
+
+  To complete the integration:
+    1. Deploy this file and iframe-communicator.html over HTTPS on your
+       domain (e.g. https://yourapp.com/payments/drchrono-authorize-payment.html).
+    2. Implement a server endpoint at `/api/authorize-token` that accepts
+       POST requests with transaction details and returns a form token from
+       Authorize.net's getHostedPaymentPageRequest API.  See comments
+       below for an example payload.
+    3. In the script below, call your `/api/authorize-token` endpoint to
+       retrieve the token, then embed the form by submitting the hidden
+       form.
+    4. Register the URL of this page with DrChrono using
+       POST /api/iframe_integration.  Each doctor who wants the tab must
+       authorize your DrChrono API app and call this endpoint.
+
+  Note: This example does not actually call Authorize.net because it has
+  no credentials.  You must implement the server-side token request and
+  pass the token to the front end.  See Authorize.net docs for details.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>DrChrono Authorize.net Payment</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 1rem;
+        font-family: sans-serif;
+      }
+      #message {
+        margin-bottom: 1rem;
+        padding: 0.5rem;
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+      }
+      iframe {
+        width: 100%;
+        border: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="message">Loading payment form…</div>
+    <form id="anetForm" method="post" action="https://accept.authorize.net/payment/payment" target="anet_iframe" style="display:none;">
+      <input type="hidden" name="token" id="anetToken" value="" />
+    </form>
+    <iframe id="anet_iframe" name="anet_iframe" title="Payment Form"></iframe>
+
+    <script>
+      // Helper to parse query parameters from DrChrono
+      function getQueryParams() {
+        const params = new URLSearchParams(window.location.search);
+        const result = {};
+        for (const [key, value] of params.entries()) {
+          result[key] = value;
+        }
+        return result;
+      }
+
+      // Fetch the Authorize.net token from your server.  You need to
+      // implement this endpoint.  It should accept JSON containing the
+      // transaction details (amount, invoice number, DrChrono patient ID,
+      // etc.) and return { token: "..." }.
+      async function fetchToken(transaction) {
+        // Replace this URL with your own endpoint.  The trailing slash is
+        // important when hosted behind some reverse proxies.
+        const apiUrl = "/api/authorize-token";
+        try {
+          const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(transaction)
+          });
+          if (!response.ok) {
+            throw new Error(`Token request failed with status ${response.status}`);
+          }
+          const data = await response.json();
+          return data.token;
+        } catch (err) {
+          console.error(err);
+          return null;
+        }
+      }
+
+      // Called on page load
+      (async function init() {
+        const params = getQueryParams();
+        // Example: use patient_id from DrChrono query to set the amount or invoice
+        const patientId = params.patient_id || "unknown";
+        const doctorId = params.doctor_id || "unknown";
+
+        // TODO: populate transaction details as needed.  In a real
+        // integration, you might look up the patient’s outstanding balance
+        // or use a fixed amount for copays.
+        const transaction = {
+          amount: "1.00", // e.g. charge $1.00 for test; replace with real amount
+          invoiceNumber: `INV-${Date.now()}`,
+          customer: { id: patientId },
+          doctorId: doctorId
+        };
+
+        // Fetch the token from your server
+        const token = await fetchToken(transaction);
+        if (!token) {
+          document.getElementById("message").textContent =
+            "Error: Unable to retrieve payment token. Check server logs.";
+          return;
+        }
+        // Inject the token into the hidden form and submit it
+        document.getElementById("anetToken").value = token;
+        document.getElementById("message").textContent = "";
+        document.getElementById("anetForm").submit();
+      })();
+
+      // Handle messages from Authorize.net to resize the iframe and act on
+      // success or cancel events.  The communicator relays messages here.
+      window.AuthorizeNetIFrame = {
+        onReceiveCommunication: function (querystr) {
+          const params = {};
+          querystr.split("&").forEach(function (part) {
+            const item = part.split("=");
+            params[decodeURIComponent(item[0])] = decodeURIComponent(item[1]);
+          });
+          switch (params.action) {
+            case "successfulSave":
+            case "transactResponse":
+              // Payment succeeded.  You can parse params.response for the
+              // transaction ID and send it back to your server / DrChrono.
+              console.log("Payment succeeded", params);
+              document.getElementById("message").textContent =
+                "Payment successful!";
+              break;
+            case "cancel":
+              console.log("Payment cancelled");
+              document.getElementById("message").textContent =
+                "Payment cancelled.";
+              break;
+            case "resizeWindow":
+              // Adjust the iframe size as advised by Authorize.net
+              const w = parseInt(params.width);
+              const h = parseInt(params.height);
+              const iframe = document.getElementById("anet_iframe");
+              iframe.style.width = w + "px";
+              iframe.style.height = h + "px";
+              break;
+          }
+        }
+      };
+    </script>
+  </body>
+</html>

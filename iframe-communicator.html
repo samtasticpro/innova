@@ -1,0 +1,49 @@
+<!doctype html>
+<!--
+  This tiny page is required by Authorize.net Accept Hosted to communicate
+  with your parent page.  It must be hosted over HTTPS on the same domain
+  as the page that embeds the payment iframe.  You reference this file in
+  your getHostedPaymentPageRequest call via the
+  hostedPaymentIFrameCommunicatorUrl setting.
+
+  See Authorize.net documentation for details:
+  https://developer.authorize.net/api/reference/features/accept-hosted.html
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>IFrame Communicator</title>
+    <script>
+      /*
+       * Authorize.net will post messages to this page via the window.postMessage
+       * API.  We forward those messages to the payment iframe's parent.  If
+       * you're using the lightbox flow, AuthorizeNetPopup will be defined;
+       * otherwise use AuthorizeNetIFrame.  The two-level parent lookup is
+       * required because Authorize.net embeds a nested iframe inside your
+       * payment iframe.
+       */
+      function relay(msg) {
+        const p = window.parent && window.parent.parent;
+        if (!p) return;
+        if (p.AuthorizeNetIFrame && p.AuthorizeNetIFrame.onReceiveCommunication) {
+          p.AuthorizeNetIFrame.onReceiveCommunication(msg);
+        }
+        if (p.AuthorizeNetPopup && p.AuthorizeNetPopup.onReceiveCommunication) {
+          p.AuthorizeNetPopup.onReceiveCommunication(msg);
+        }
+      }
+
+      // Listen for messages from Authorize.net
+      window.addEventListener('message', e => {
+        if (e && e.data) relay(e.data);
+      });
+
+      // When loaded with a hash fragment (e.g. #action=resizeWindow&width=640&height=480),
+      // relay it immediately.  This happens during redirects.
+      if (location.hash && location.hash.length > 1) {
+        relay(location.hash.substring(1));
+      }
+    </script>
+  </head>
+  <body></body>
+</html>
