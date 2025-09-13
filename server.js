@@ -28,5 +28,29 @@ app.post('/api/authorize-token', async (req, res) => {
     const retUrl   = process.env.RETURN_URL || 'https://innovahealthwellness.com/authorize-chrono/return.html';
     const cancelUrl= process.env.CANCEL_URL || 'https://innovahealthwellness.com/authorize-chrono/cancel.html';
 
-    // ✅ Correct Authorize.net endpoints (XML path; JSON body is OK)
-    const apiUrl = mode === '
+    // Correct Authorize.net endpoints (XML path; JSON body is OK)
+    const apiUrl = mode === 'production'
+      ? 'https://api2.authorize.net/xml/v1/request.api'     // production
+      : 'https://apitest.authorize.net/xml/v1/request.api'; // sandbox
+
+    const payload = {
+      getHostedPaymentPageRequest: {
+        merchantAuthentication: { name: apiLogin, transactionKey: txnKey },
+        transactionRequest: {
+          transactionType: 'authCaptureTransaction',
+          amount: String(Number(amount).toFixed(2)),
+          ...(customerId ? { customer: { id: String(customerId) } } : {}),
+          order: {
+            invoiceNumber: String(invoiceNumber).slice(0, 20),
+            description: (description || 'Payment').slice(0, 255)
+          }
+        },
+        hostedPaymentSettings: {
+          setting: [
+            {
+              settingName: 'hostedPaymentIFrameCommunicatorUrl',
+              settingValue: JSON.stringify({ url: commUrl })
+            },
+            {
+              settingName: 'hostedPaymentReturnOptions',
+              settingValue: JSON.stringify({
