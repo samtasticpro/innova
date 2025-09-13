@@ -54,3 +54,49 @@ app.post('/api/authorize-token', async (req, res) => {
             {
               settingName: 'hostedPaymentReturnOptions',
               settingValue: JSON.stringify({
+                showReceipt: false,
+                url: retUrl,
+                urlText: 'Continue',
+                cancelUrl,
+                cancelUrlText: 'Cancel'
+              })
+            }
+          ]
+        }
+      }
+    };
+
+    const { data } = await axios.post(apiUrl, payload, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 15000
+    });
+
+    // Diagnostics if Anet returns an error
+    const diag = {
+      resultCode: data?.messages?.resultCode,
+      messageCodes: data?.messages?.message?.map(m => m.code),
+      messageText: data?.messages?.message?.map(m => m.text)
+    };
+
+    const token = data?.token || data?.getHostedPaymentPageResponse?.token;
+    if (!token) {
+      return res.status(502).json({ error: 'No token in Authorize.net response', anet: diag });
+    }
+
+    res.json({ token });
+  } catch (err) {
+    const resp = err?.response?.data;
+    res.status(500).json({
+      error: 'Unable to generate token',
+      anet: {
+        resultCode: resp?.messages?.resultCode,
+        messageCodes: resp?.messages?.message?.map(m => m.code),
+        messageText: resp?.messages?.message?.map(m => m.text)
+      },
+      hint: err.message
+    });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log('Listening on ' + PORT));
