@@ -5,7 +5,6 @@ const cors = require('cors');
 const app = express();
 app.use(express.json());
 
-// Only allow your site that hosts the DrChrono page
 app.use(cors({
   origin: ['https://innovahealthwellness.com'],
   methods: ['POST'],
@@ -23,28 +22,33 @@ app.post('/api/authorize-token', async (req, res) => {
 
     const apiLogin = process.env.AUTHNET_API_LOGIN_ID;
     const txnKey   = process.env.AUTHNET_TRANSACTION_KEY;
-    const mode     = process.env.AUTHNET_ENV || 'sandbox'; // 'production' for live
+    const mode     = process.env.AUTHNET_ENV || 'sandbox';
     const commUrl  = process.env.COMMUNICATOR_URL;
     const retUrl   = process.env.RETURN_URL || 'https://innovahealthwellness.com/authorize-chrono/return.html';
     const cancelUrl= process.env.CANCEL_URL || 'https://innovahealthwellness.com/authorize-chrono/cancel.html';
 
-    // ✅ Correct Authorize.net endpoints (XML path; JSON body is OK)
     const apiUrl = mode === 'production'
-      ? 'https://api2.authorize.net/xml/v1/request.api'     // production
-      : 'https://apitest.authorize.net/xml/v1/request.api'; // sandbox
+      ? 'https://api2.authorize.net/xml/v1/request.api'
+      : 'https://apitest.authorize.net/xml/v1/request.api';
+
+    const transactionRequest = {
+      transactionType: 'authCaptureTransaction',
+      amount: String(Number(amount).toFixed(2)),
+      ...(customerId ? { customer: { id: String(customerId) } } : {}),
+
+      // Use userFields to carry invoice/description instead of <order>
+      userFields: {
+        userField: [
+          { name: 'invoiceNumber', value: String(invoiceNumber).slice(0, 20) },
+          ...(description ? [{ name: 'description', value: String(description).slice(0, 255) }] : [])
+        ]
+      }
+    };
 
     const payload = {
       getHostedPaymentPageRequest: {
         merchantAuthentication: { name: apiLogin, transactionKey: txnKey },
-        transactionRequest: {
-          transactionType: 'authCaptureTransaction',
-          amount: String(Number(amount).toFixed(2)),
-          ...(customerId ? { customer: { id: String(customerId) } } : {}),
-          order: {
-            invoiceNumber: String(invoiceNumber).slice(0, 20), // Anet limit: 20 chars
-            description: (description || 'Payment').slice(0, 255)
-          }
-        },
+        transactionRequest,
         hostedPaymentSettings: {
           setting: [
             {
@@ -71,7 +75,6 @@ app.post('/api/authorize-token', async (req, res) => {
       timeout: 15000
     });
 
-    // Helpful diagnostics if Anet returns an error
     const diag = {
       resultCode: data?.messages?.resultCode,
       messageCodes: data?.messages?.message?.map(m => m.code),
@@ -99,5 +102,4 @@ app.post('/api/authorize-token', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// Explicitly bind to 0.0.0.0 for Fly
 app.listen(PORT, '0.0.0.0', () => console.log('Listening on ' + PORT));
